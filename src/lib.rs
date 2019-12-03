@@ -1,6 +1,5 @@
 use std::f64;
 
-
 pub fn trapezoid(start: f64, end: f64, steps: i64, fp: fn(f64) -> f64) -> f64 {
     let h = (end - start) / (steps as f64);
 
@@ -132,6 +131,136 @@ pub fn simpsons38_composite(start: f64, end: f64, steps: i64, fp: fn(f64) -> f64
     return 3.0 * h / 8.0 * total;
 }
 
+pub fn bisect(fp: fn(f64) -> f64, mut x0: f64, mut x1: f64) -> f64 {
+    let eps = 10e-8;
+    let mut fx0 = fp(x0);
+    let mut root = 0.0;
+
+    while x1 - x0 > eps {
+        root = (x0 + x1) / 2.0;
+        let froot = fp(root);
+        if froot * fx0 < 0.0 {
+            x1 = root;
+        } else {
+            x0 = root;
+            fx0 = froot;
+        }
+    }
+
+    return root;
+}
+
+pub fn secant(fp: fn(f64) -> f64, mut x0: f64, mut x1: f64) -> f64 {
+    let eps = 10e-8;
+
+    let mut fx0 = fp(x0);
+    while (x1 - x0).abs() > eps {
+        let fx1 = fp(x1);
+        let x2 = x1 - fx1 * ((x1 - x0) / (fx1 - fx0));
+        x0 = x1;
+        x1 = x2;
+        fx0 = fx1;
+    }
+
+    return x1;
+}
+
+pub fn falsi(fp: fn(f64) -> f64, mut s: f64, mut t: f64) -> f64 {
+    let mut side = 0;
+
+    let mut fs = fp(s);
+    let mut ft = fp(t);
+
+    let m = 100; // max iterations
+
+    let mut r = 0.0;
+    let e = 5e-15; // eps
+
+    for _ in 0..m {
+        r = (fs * t - ft * s) / (fs - ft);
+        if (t - s).abs() < (e * (t + s).abs()) {
+            break;
+        }
+
+        let fr = fp(r);
+
+        if fr * ft > 0.0 {
+            t = r;
+            ft = fr;
+            if side == -1 {
+                fs /= 2.0;
+            }
+            side = -1;
+        } else if fs * fr > 0.0 {
+            s = r;
+            fs = fr;
+            if side == 1 {
+                ft /= 2.0;
+            }
+            side = 1;
+        } else {
+            break;
+        }
+    }
+    return r;
+}
+
+pub fn ridder(fp: fn(f64) -> f64, mut a: f64, mut b: f64) -> f64 {
+    let tol = 1.0e-9;
+
+    let mut fa = fp(a);
+    if fa == 0.0 {
+        return a;
+    }
+    let mut fb = fp(b);
+    if fb == 0.0 {
+        return b;
+    }
+
+    // if fa*fb > 0.0: errror.err('Root is not bracketed')
+
+    let mut xOld = 0.0;
+
+    for i in 0..30 {
+        // Compute the improved root x from Ridder's formula
+        let c = 0.5 * (a + b);
+        let fc = fp(c);
+        let s = (fc * fc - fa * fb).sqrt();
+        if s == 0.0 {
+            return 0.0;
+        }
+        let mut dx = (c - a) * fc / s;
+        if (fa - fb) < 0.0 {
+            dx = -dx;
+        }
+        let x = c + dx;
+        let fx = fp(x);
+        // Test for convergence
+        if i > 0 && (x - xOld).abs() < tol * x.abs().max(1.0) {
+            return x;
+        }
+        xOld = x;
+        // Re-bracket the root as tightly as possible
+        if fc * fx > 0.0 {
+            if fa * fx < 0.0 {
+                b = x;
+                fb = fx;
+            } else {
+                a = x;
+                fa = fx;
+            }
+        } else {
+            a = c;
+            b = x;
+            fa = fc;
+            fb = fx;
+        }
+    }
+
+    // too many iterations
+    return 0.0;
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -139,24 +268,42 @@ mod tests {
     use std::f64::consts::PI;
 
     #[test]
-    fn runall() {
+    fn runall_integrate() {
         let algs = [
             trapezoid,
             trapezoid_iterative,
             romberg,
             simpsons_composite,
             simpsons38_composite,
-        //  These two algorithms are not accurate enough
+            //  These two algorithms are not accurate enough
             // simpsons,
             // simpsons38
         ];
 
         for alg in algs.iter() {
-            let r = alg(0.0, PI/2.0, 100, f);
+            let r = alg(0.0, PI / 2.0, 100, f_integrate);
             let t = (r - 2.0).abs();
             assert!(t < 0.0001);
         }
     }
 
-    fn f(x:f64) -> f64 { x.sin() + x.cos() }
+    fn f_integrate(x: f64) -> f64 {
+        x.sin() + x.cos()
+    }
+
+    #[test]
+    fn runall_roots() {
+        let algs = [bisect, secant, falsi, ridder];
+
+        for alg in algs.iter() {
+            let r = alg(f_root, 1.0, 4.0);
+            let t = (r - 2.0).abs();
+            println!("t = {}, r = {}", t, r);
+            assert!(t < 0.00001);
+        }
+    }
+
+    fn f_root(x: f64) -> f64 {
+        (x * x) - 4.0
+    }
 }
